@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>LOW POS</title>
+<title>Low Records & Coffee POS</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <script src="StarWebPrintBuilder.js"></script>
 <script src="StarWebPrintTrader.js"></script>
@@ -247,7 +247,7 @@ window.deleteDaySales = async (label) => {
 <div id="view-index" class="view active">
   <header>
     <div class="admin-btn" id="admin-btn-label" onclick="checkAdminAuth()">売上管理</div>
-    <div class="header-title">LOW</div>
+    <div class="header-title" style="font-size:16px; letter-spacing:0.08em;">Low Records & Coffee</div>
     <div class="reload-btn" onclick="location.reload()">↻</div>
   </header>
   <div class="grid-tables" id="table-grid"></div>
@@ -746,7 +746,7 @@ async function printReport(mode) {
     if(sales.length===0) return alert("データなし");
     let total=0, guests=0; sales.forEach(s=>{total+=s.total; guests+=s.guests;});
     const b = new StarWebPrintBuilder(); let r = b.createInitializationElement();
-    r += b.createAlignmentElement({position:'center'}); r += b.createTextElement({data:`LOW\n【月計】${sy}年${sm}月\n`, width:2, height:2});
+    r += b.createAlignmentElement({position:'center'}); r += b.createTextElement({data:`Low Records & Coffee\n【月計】${sy}年${sm}月\n`, width:2, height:2});
     r += b.createAlignmentElement({position:'left'}); r += b.createTextElement({data:`----------------------------\n売上: ¥${total.toLocaleString()}\n客数: ${guests}名 / ${sales.length}件\n----------------------------\n`});
     r += b.createCutPaperElement({type:'partial'});
     new StarWebPrintTrader({url:RECEIPT_PRINTER_URL}).sendMessage({request:r}); alert("印刷しました");
@@ -763,7 +763,7 @@ async function printReport(mode) {
     if(sales.length===0) return alert("データなし");
     let total=0, guests=0; sales.forEach(s=>{total+=s.total; guests+=s.guests;});
     const b = new StarWebPrintBuilder(); let r = b.createInitializationElement();
-    r += b.createAlignmentElement({position:'center'}); r += b.createTextElement({data:`LOW\n【日計】\n`, width:2, height:2});
+    r += b.createAlignmentElement({position:'center'}); r += b.createTextElement({data:`Low Records & Coffee\n【日計】\n`, width:2, height:2});
     r += b.createAlignmentElement({position:'left'}); r += b.createTextElement({data:`${options.find(o=>o.key===chosen)?.label||''}\n----------------------------\n売上: ¥${total.toLocaleString()}\n客数: ${guests}名 / ${sales.length}件\n----------------------------\n`});
     r += b.createCutPaperElement({type:'partial'});
     new StarWebPrintTrader({url:RECEIPT_PRINTER_URL}).sendMessage({request:r}); alert("印刷しました");
@@ -805,7 +805,7 @@ async function confirmGuestCount() {
   let c = parseInt(tempGuestCount); if(c<1) return alert("人数を入力してください");
   localStorage.setItem('guests_'+currentTable, c);
   const now = new Date(); localStorage.setItem('checkin_'+currentTable, now.getHours().toString().padStart(2,'0')+":"+now.getMinutes().toString().padStart(2,'0'));
-  try { if(window.cloudSync) await window.cloudSync(currentTable); } catch(e) {}
+  if(window.cloudSync) window.cloudSync(currentTable).catch(e => console.warn('sync失敗:', e));
   showMenu();
 }
 
@@ -1019,7 +1019,7 @@ function renderReceiptSample() {
   const g = localStorage.getItem('guests_'+currentTable)||0;
   const c = localStorage.getItem('checkin_'+currentTable)||"--:--";
   let sub=0, tx=0;
-  let t = `<div>LOW</div><div class="receipt-hr"></div><div>日時: ${new Date().toLocaleString()}</div><div>席: ${currentTable} / ${g}名 / 入店: ${c}</div><div class="receipt-hr"></div>`;
+  let t = `<div style="text-align:center;font-weight:bold;">Low Records & Coffee</div><div style="text-align:center;font-size:10px;">北海道札幌市北区北18条西5丁目1-8</div><div style="text-align:center;font-size:10px;">TEL: 080-5582-4507</div><div class="receipt-hr"></div><div>日時: ${new Date().toLocaleString()}</div><div>席: ${currentTable} / ${g}名 / 入店: ${c}</div><div class="receipt-hr"></div>`;
   h.forEach(i => { const l=i.price*i.qty; sub+=l; tx+=Math.floor(l*i.rate); t+=`<div>${i.name}<span style="float:right">¥${(l+Math.floor(l*i.rate)).toLocaleString()}</span></div>`; });
   t += `<div class="receipt-hr"></div><div style="text-align:right;font-weight:bold;">税込合計: ¥${(sub+tx).toLocaleString()}</div>`;
   document.getElementById('sample-receipt-content').innerHTML = t;
@@ -1036,7 +1036,8 @@ async function pay(doPrint) {
   if(doPrint) {
     let sub8=0,tax8=0,sub10=0,tax10=0;
     r += b.createAlignmentElement({position:'center'});
-    r += b.createTextElement({data:`LOW\n`, width:2, height:2});
+    r += b.createTextElement({data:`Low Records & Coffee\n`, width:2, height:2});
+    r += b.createTextElement({data:`北海道札幌市北区北18条西5丁目1-8\nTEL: 080-5582-4507\n\n`});
     r += b.createAlignmentElement({position:'left'});
     r += b.createTextElement({data:`日時: ${new Date().toLocaleString()}\n席: ${currentTable} / ${g}名 / 入店: ${c}\n----------------------------\n`});
     hist.forEach(i => {
@@ -1058,7 +1059,7 @@ async function pay(doPrint) {
       if(received>0) r += b.createTextElement({data:`お預かり: ¥${received.toLocaleString()}\nお釣り:   ¥${Math.max(0,received-grand).toLocaleString()}\n`});
     }
     r += b.createAlignmentElement({position:'center'});
-    r += b.createTextElement({data:`\nありがとうございました\n\n`});
+    r += b.createTextElement({data:`\nありがとうございました\nLow Records & Coffee\n\n`});
     r += b.createCutPaperElement({type:'partial'});
   }
   const t = new StarWebPrintTrader({url: RECEIPT_PRINTER_URL});
@@ -1092,7 +1093,7 @@ function updateRyoshuushoPreview() {
     `<div style="font-size:11px;color:#555;margin-bottom:4px;">但し　${tadashi}</div>` +
     `<div style="font-size:11px;color:#555;margin-bottom:6px;">上記正に領収いたしました　${ds}</div>` +
     `<div style="border-top:1px dashed #ccc;padding-top:5px;font-size:10px;color:#888;">税抜: ¥${sub.toLocaleString()} / 消費税: ¥${tax.toLocaleString()}</div>` +
-    `<div style="font-size:11px;text-align:right;margin-top:5px;">LOW</div>`;
+    `<div style="font-size:11px;text-align:right;margin-top:5px;">Low Records & Coffee</div>`;
 }
 function printRyoshuusho() {
   const atena = document.getElementById('ryoshuusho-atena').value||'上様';
@@ -1106,7 +1107,7 @@ function printRyoshuusho() {
   r += b.createAlignmentElement({position:'right'}); r += b.createTextElement({data:`¥${total.toLocaleString()}-\n`, width:2, height:2});
   r += b.createAlignmentElement({position:'left'});
   r += b.createTextElement({data:`\n但し　${tadashi}\n上記正に領収いたしました\n${ds}\n----------------------------\n税抜: ¥${sub.toLocaleString()} / 消費税: ¥${tax.toLocaleString()}\n----------------------------\n`});
-  r += b.createAlignmentElement({position:'center'}); r += b.createTextElement({data:`LOW\n\n`});
+  r += b.createAlignmentElement({position:'center'}); r += b.createTextElement({data:`Low Records & Coffee\n北海道札幌市北区北18条西5丁目1-8\nTEL: 080-5582-4507\n\n`});
   r += b.createCutPaperElement({type:'partial'});
   const t = new StarWebPrintTrader({url: RECEIPT_PRINTER_URL});
   t.onReceive = () => { closeRyoshuusho(); alert("領収書を印刷しました"); };
