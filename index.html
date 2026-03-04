@@ -127,11 +127,7 @@ footer { width: 100%; display: flex; flex-direction: column; z-index: 100; box-s
 <body>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection, addDoc, getDocs, Timestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-
-// ▼ Firebase設定（新プロジェクトに差し替えてください）
+// ▼ Firebase設定（プロジェクト作成後に差し替えてください）
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
   authDomain: "YOUR_PROJECT.firebaseapp.com",
@@ -141,92 +137,118 @@ const firebaseConfig = {
   appId: "YOUR_APP_ID"
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
+const isFirebaseReady = firebaseConfig.apiKey !== "YOUR_API_KEY";
 
-window.currentUser = null;
-window.isEditing = false;
+// Firebase未設定時はスタブ関数で動作
+if (!isFirebaseReady) {
+  console.warn("Firebase未設定 - ローカルモードで動作します");
+  window.currentUser = null;
+  window.isEditing = false;
+  window.cloudSync = async () => {};
+  window.saveSaleToCloud = async (tableId) => {
+    // ローカルのみ：historyとguestsを消去してindexへ
+    localStorage.removeItem('history_' + tableId);
+    localStorage.removeItem('guests_' + tableId);
+    localStorage.removeItem('checkin_' + tableId);
+  };
+  window.getSalesData = async () => [];
+  window.deleteSaleDoc = async () => alert("Firebase未設定のため利用できません");
+  window.deleteDaySales = async () => alert("Firebase未設定のため利用できません");
+  window.loginOwner = async () => alert("Firebase未設定のためログインできません");
+  window.logoutOwner = () => {};
+} else {
+  // Firebase本番
+  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js");
+  const { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection, addDoc, getDocs, Timestamp } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
+  const { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js");
 
-onAuthStateChanged(auth, (user) => {
-  window.currentUser = user;
-  const btn = document.getElementById('admin-btn-label');
-  if(user) { btn.innerText = "管理(オーナー)"; btn.style.borderColor = "rgba(200,169,126,0.9)"; if(document.getElementById('view-login').style.display !== 'none') showAdmin('day'); }
-  else { btn.innerText = "売上管理"; btn.style.borderColor = "rgba(255,255,255,0.4)"; }
-});
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
 
-window.loginOwner = async (email, pass) => {
-  try { await signInWithEmailAndPassword(auth, email, pass); alert("ログイン成功"); showAdmin('day'); }
-  catch(e) { alert("ログイン失敗"); }
-};
-window.logoutOwner = () => { signOut(auth); alert("ログアウト完了"); showIndex(); };
+  window.currentUser = null;
+  window.isEditing = false;
 
-onSnapshot(collection(db, "tables"), (snapshot) => {
-  if(window.isEditing) return;
-  const allIds = snapshot.docs.map(d => d.id);
-  getTablesL().forEach(tId => {
-    if(!allIds.includes(tId)) {
-      localStorage.removeItem('history_'+tId); localStorage.removeItem('guests_'+tId); localStorage.removeItem('checkin_'+tId);
+  onAuthStateChanged(auth, (user) => {
+    window.currentUser = user;
+    const btn = document.getElementById('admin-btn-label');
+    if(user) { btn.innerText = "管理(オーナー)"; btn.style.borderColor = "rgba(200,169,126,0.9)"; if(document.getElementById('view-login').style.display !== 'none') showAdmin('day'); }
+    else { btn.innerText = "売上管理"; btn.style.borderColor = "rgba(255,255,255,0.4)"; }
+  });
+
+  window.loginOwner = async (email, pass) => {
+    try { await signInWithEmailAndPassword(auth, email, pass); alert("ログイン成功"); showAdmin('day'); }
+    catch(e) { alert("ログイン失敗"); }
+  };
+  window.logoutOwner = () => { signOut(auth); alert("ログアウト完了"); showIndex(); };
+
+  onSnapshot(collection(db, "tables"), (snapshot) => {
+    if(window.isEditing) return;
+    const allIds = snapshot.docs.map(d => d.id);
+    getTablesL().forEach(tId => {
+      if(!allIds.includes(tId)) {
+        localStorage.removeItem('history_'+tId); localStorage.removeItem('guests_'+tId); localStorage.removeItem('checkin_'+tId);
+      }
+    });
+    snapshot.forEach((docSnap) => {
+      const tId = docSnap.id; const data = docSnap.data();
+      localStorage.setItem('history_'+tId, JSON.stringify(data.history || []));
+      localStorage.setItem('guests_'+tId, data.guests || 0);
+      localStorage.setItem('checkin_'+tId, data.checkin || "--:--");
+    });
+    renderIndex(); updateFooter();
+  });
+
+  window.cloudSync = async (tableId) => {
+    try {
+      await setDoc(doc(db, "tables", tableId), {
+        history: JSON.parse(localStorage.getItem('history_'+tableId) || '[]'),
+        guests: parseInt(localStorage.getItem('guests_'+tableId)) || 0,
+        checkin: localStorage.getItem('checkin_'+tableId) || "--:--",
+        updatedAt: Timestamp.now()
+      });
+    } catch(e) { console.warn('cloudSync失敗:', e.message); }
+  };
+
+  window.saveSaleToCloud = async (tableId, paymentMethod) => {
+    const hist = JSON.parse(localStorage.getItem('history_'+tableId) || '[]');
+    if(hist.length === 0) return;
+    const guests = parseInt(localStorage.getItem('guests_'+tableId)) || 0;
+    const checkin = localStorage.getItem('checkin_'+tableId) || "--:--";
+    let subtotal = 0, tax = 0;
+    hist.forEach(i => { subtotal += i.price * i.qty; tax += Math.floor(i.price * i.qty * i.rate); });
+    try {
+      await addDoc(collection(db, "sales"), {
+        tableId, guests, checkin,
+        checkout: new Date().getHours().toString().padStart(2,'0')+":"+new Date().getMinutes().toString().padStart(2,'0'),
+        items: hist, subtotal, tax, total: subtotal+tax,
+        paymentMethod: paymentMethod || '現金',
+        timestamp: Timestamp.now()
+      });
+    } catch(e) { console.warn("売上保存失敗:", e.message); }
+    try { await deleteDoc(doc(db, "tables", tableId)); } catch(e) {}
+  };
+
+  window.getSalesData = async () => {
+    const snap = await getDocs(collection(db, "sales"));
+    let res = [];
+    snap.forEach(d => { let data = d.data(); data.id = d.id; res.push(data); });
+    return res.sort((a,b) => b.timestamp - a.timestamp);
+  };
+
+  window.deleteSaleDoc = async (id) => {
+    if(confirm("削除しますか？")) { await deleteDoc(doc(db, "sales", id)); await new Promise(r => setTimeout(r, 500)); window.showAdmin('day'); }
+  };
+  window.deleteDaySales = async (label) => {
+    const entry = Object.values(window._dayDeleteMap || {}).find(x => x.label === label);
+    if(!entry) return alert("データが見つかりません");
+    if(confirm(`${label} の${entry.ids.length}件を削除しますか？`)) {
+      await Promise.all(entry.ids.map(id => deleteDoc(doc(db, "sales", id))));
+      await new Promise(r => setTimeout(r, 500));
+      window.showAdmin('dates');
     }
-  });
-  snapshot.forEach((docSnap) => {
-    const tId = docSnap.id; const data = docSnap.data();
-    localStorage.setItem('history_'+tId, JSON.stringify(data.history || []));
-    localStorage.setItem('guests_'+tId, data.guests || 0);
-    localStorage.setItem('checkin_'+tId, data.checkin || "--:--");
-  });
-  renderIndex(); updateFooter();
-});
-
-window.cloudSync = async (tableId) => {
-  try {
-    await setDoc(doc(db, "tables", tableId), {
-      history: JSON.parse(localStorage.getItem('history_'+tableId) || '[]'),
-      guests: parseInt(localStorage.getItem('guests_'+tableId)) || 0,
-      checkin: localStorage.getItem('checkin_'+tableId) || "--:--",
-      updatedAt: Timestamp.now()
-    });
-  } catch(e) { console.warn('cloudSync失敗:', e.message); }
-};
-
-window.saveSaleToCloud = async (tableId, paymentMethod) => {
-  const hist = JSON.parse(localStorage.getItem('history_'+tableId) || '[]');
-  if(hist.length === 0) return;
-  const guests = parseInt(localStorage.getItem('guests_'+tableId)) || 0;
-  const checkin = localStorage.getItem('checkin_'+tableId) || "--:--";
-  let subtotal = 0, tax = 0;
-  hist.forEach(i => { subtotal += i.price * i.qty; tax += Math.floor(i.price * i.qty * i.rate); });
-  try {
-    await addDoc(collection(db, "sales"), {
-      tableId, guests, checkin,
-      checkout: new Date().getHours().toString().padStart(2,'0')+":"+new Date().getMinutes().toString().padStart(2,'0'),
-      items: hist, subtotal, tax, total: subtotal+tax,
-      paymentMethod: paymentMethod || '現金',
-      timestamp: Timestamp.now()
-    });
-  } catch(e) { console.warn("売上保存失敗:", e.message); }
-  try { await deleteDoc(doc(db, "tables", tableId)); } catch(e) {}
-};
-
-window.getSalesData = async () => {
-  const snap = await getDocs(collection(db, "sales"));
-  let res = [];
-  snap.forEach(d => { let data = d.data(); data.id = d.id; res.push(data); });
-  return res.sort((a,b) => b.timestamp - a.timestamp);
-};
-
-window.deleteSaleDoc = async (id) => {
-  if(confirm("削除しますか？")) { await deleteDoc(doc(db, "sales", id)); await new Promise(r => setTimeout(r, 500)); window.showAdmin('day'); }
-};
-window.deleteDaySales = async (label) => {
-  const entry = Object.values(window._dayDeleteMap || {}).find(x => x.label === label);
-  if(!entry) return alert("データが見つかりません");
-  if(confirm(`${label} の${entry.ids.length}件を削除しますか？`)) {
-    await Promise.all(entry.ids.map(id => deleteDoc(doc(db, "sales", id))));
-    await new Promise(r => setTimeout(r, 500));
-    window.showAdmin('dates');
-  }
-};
+  };
+}
 </script>
 
 <!-- ▼▼▼ 席追加モーダル ▼▼▼ -->
