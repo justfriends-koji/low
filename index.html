@@ -216,7 +216,11 @@ if (!isFirebaseReady) {
     const guests = parseInt(localStorage.getItem('guests_'+tableId)) || 0;
     const checkin = localStorage.getItem('checkin_'+tableId) || "--:--";
     let subtotal = 0, tax = 0;
-    hist.forEach(i => { subtotal += i.price * i.qty; tax += Math.floor(i.price * i.qty * i.rate); });
+    hist.forEach(i => {
+      const lp = i.price * i.qty;
+      const lexc = Math.floor(lp / (1 + i.rate));
+      subtotal += lexc; tax += lp - lexc;
+    });
     try {
       await addDoc(collection(db, "sales"), {
         tableId, guests, checkin,
@@ -610,7 +614,7 @@ function renderIndex() {
   const customs = getCustomTableNames();
   g.innerHTML = getTablesL().map(t => {
     const h = JSON.parse(localStorage.getItem('history_'+t) || '[]');
-    const total = h.reduce((s, i) => s + Math.floor(i.price*i.qty*(1+i.rate)), 0);
+    const total = h.reduce((s, i) => s + i.price*i.qty, 0);
     const isCustom = customs.includes(t);
     const customClass = isCustom ? ' custom-seat' : '';
     const delBtn = isCustom
@@ -870,8 +874,8 @@ function renderItems(category) {
   const isTO = category.cat === 'テイクアウト';
   container.innerHTML = category.items.map((item, idx) => {
     const rate = isTO ? 0.08 : 0.10;
-    const taxInc = item.p === 0 ? 0 : Math.floor(item.p * (1+rate));
-    const priceStr = item.p === 0 ? '価格応相談' : `¥${item.p.toLocaleString()} <small style="font-size:10px;color:#bbb;">(税込¥${taxInc.toLocaleString()})</small>`;
+    const taxExc = item.p === 0 ? 0 : Math.floor(item.p / (1+rate));
+    const priceStr = item.p === 0 ? '価格応相談' : `¥${item.p.toLocaleString()} <small style="font-size:10px;color:#bbb;">(税抜¥${taxExc.toLocaleString()})</small>`;
     const subStr = item.s ? `<div class="item-sub">${item.s}</div>` : `<div class="item-sub"></div>`;
     return `<div class="item-card">
       <div><span class="item-name">${item.n}</span>${subStr}<span class="item-price">${priceStr}</span></div>
@@ -923,8 +927,8 @@ function addToCart(name, price, qId, rate) {
 function updateFooter() {
   document.getElementById('cart-count').innerText = currentCart.reduce((s,i)=>s+i.qty,0);
   const hist = JSON.parse(localStorage.getItem('history_'+currentTable)||'[]');
-  const total = hist.reduce((s,i)=>s+Math.floor(i.price*i.qty*(1+i.rate)),0);
-  document.getElementById('display-current-total').innerText = '税込合計 ¥'+total.toLocaleString();
+  const total = hist.reduce((s,i)=>s+i.price*i.qty, 0);
+  document.getElementById('display-current-total').innerText = '合計 ¥'+total.toLocaleString();
 }
 
 // ===== CART =====
@@ -954,17 +958,20 @@ function renderHistoryUI() {
   const hist = JSON.parse(localStorage.getItem('history_'+currentTable)||'[]');
   let sub=0, tax=0;
   document.getElementById('history-items-list').innerHTML = hist.map((i,idx) => {
-    const lp=i.price*i.qty; const lt=Math.floor(lp*i.rate); sub+=lp; tax+=lt;
-    return `<div class="list-row"><div><b>${i.name}</b><br><small style="color:#999;">税込¥${(lp+lt).toLocaleString()}</small></div>
+    const lp=i.price*i.qty;
+    const lt=lp - Math.floor(lp/(1+i.rate));
+    sub+=Math.floor(lp/(1+i.rate)); tax+=lt;
+    return `<div class="list-row"><div><b>${i.name}</b><br><small style="color:#999;">¥${lp.toLocaleString()}</small></div>
     <div style="display:flex;align-items:center;gap:10px;">
       <div class="btn-circle" onclick="changeHistoryQty(${idx},-1)">-</div>
       <span style="font-weight:bold;">${i.qty}</span>
       <div class="btn-circle" onclick="changeHistoryQty(${idx},1)">+</div>
     </div></div>`;
   }).join('') || '<p style="padding:30px; color:#bbb; text-align:center;">なし</p>';
+  const grandTotal = hist.reduce((s,i)=>s+i.price*i.qty, 0);
   document.getElementById('history-summary').innerHTML =
     `<div style="color:#999;font-size:12px;">入店: ${localStorage.getItem('checkin_'+currentTable)} / ${localStorage.getItem('guests_'+currentTable)}名</div>
-     <div>税込計: <b style="font-size:22px; color:var(--accent);">¥${(sub+tax).toLocaleString()}</b></div>`;
+     <div>合計: <b style="font-size:22px; color:var(--accent);">¥${grandTotal.toLocaleString()}</b></div>`;
 }
 async function confirmHistoryChange() { if(window.cloudSync) await window.cloudSync(currentTable); alert("同期完了"); }
 function exitEditing() { window.isEditing=false; showMenu(); }
@@ -973,7 +980,7 @@ function showOrderHistory() { window.isEditing=true; hideAll(); document.getElem
 // ===== CHECKOUT =====
 function showCheckout() {
   const hist = JSON.parse(localStorage.getItem('history_'+currentTable)||'[]');
-  const total = hist.reduce((s,i)=>s+Math.floor(i.price*i.qty*(1+i.rate)),0);
+  const total = hist.reduce((s,i)=>s+i.price*i.qty, 0);
   document.getElementById('checkout-final-total').innerText = '¥'+total.toLocaleString();
   document.getElementById('checkout-final-info').innerText = `入店 ${localStorage.getItem('checkin_'+currentTable)} / ${localStorage.getItem('guests_'+currentTable)}名`;
   hideAll(); document.getElementById('view-checkout').style.display='flex';
@@ -1057,8 +1064,9 @@ function renderReceiptSample() {
   const c = localStorage.getItem('checkin_'+currentTable)||"--:--";
   let sub=0, tx=0;
   let t = `<div style="text-align:center;font-weight:bold;">Low Records & Coffee</div><div style="text-align:center;font-size:10px;">北海道札幌市北区北18条西5丁目1-8</div><div style="text-align:center;font-size:10px;">TEL: 080-5582-4507</div><div class="receipt-hr"></div><div>日時: ${new Date().toLocaleString()}</div><div>席: ${currentTable} / ${g}名 / 入店: ${c}</div><div class="receipt-hr"></div>`;
-  h.forEach(i => { const l=i.price*i.qty; sub+=l; tx+=Math.floor(l*i.rate); t+=`<div>${i.name}<span style="float:right">¥${(l+Math.floor(l*i.rate)).toLocaleString()}</span></div>`; });
-  t += `<div class="receipt-hr"></div><div style="text-align:right;font-weight:bold;">税込合計: ¥${(sub+tx).toLocaleString()}</div>`;
+  let total2=0;
+  h.forEach(i => { const l=i.price*i.qty; total2+=l; t+=`<div>${i.name}<span style="float:right">¥${l.toLocaleString()}</span></div>`; });
+  t += `<div class="receipt-hr"></div><div style="text-align:right;font-weight:bold;">合計: ¥${total2.toLocaleString()}</div>`;
   document.getElementById('sample-receipt-content').innerHTML = t;
 }
 function closeReceiptChoice() { document.getElementById('overlay-receipt').style.display='none'; }
@@ -1078,10 +1086,12 @@ async function pay(doPrint) {
     r += b.createAlignmentElement({position:'left'});
     r += b.createTextElement({data:`日時: ${new Date().toLocaleString()}\n席: ${currentTable} / ${g}名 / 入店: ${c}\n----------------------------\n`});
     hist.forEach(i => {
-      const l=i.price*i.qty; const t=Math.floor(l*i.rate); const ti=l+t;
-      if(i.rate===0.08){sub8+=l;tax8+=t;}else{sub10+=l;tax10+=t;}
+      const lp=i.price*i.qty;
+      const lexc=Math.floor(lp/(1+i.rate));
+      const lt=lp-lexc;
+      if(i.rate===0.08){sub8+=lexc;tax8+=lt;}else{sub10+=lexc;tax10+=lt;}
       const mark = i.rate===0.08?'※':'';
-      r += b.createTextElement({data:`${i.name}${mark}\n  ${i.qty}点 ¥${ti.toLocaleString()}\n`});
+      r += b.createTextElement({data:`${i.name}${mark}\n  ${i.qty}点 ¥${lp.toLocaleString()}\n`});
     });
     const grand = sub8+tax8+sub10+tax10;
     r += b.createTextElement({data:`----------------------------\n`});
