@@ -251,7 +251,22 @@ if (!isFirebaseReady) {
 }
 </script>
 
-<!-- ▼▼▼ 席追加モーダル ▼▼▼ -->
+<!-- スタブ（モジュール読み込み前に確実に定義） -->
+<script>
+window.currentUser = null;
+window.isEditing = false;
+window.cloudSync = async () => {};
+window.saveSaleToCloud = async (tableId) => {
+  localStorage.removeItem('history_' + tableId);
+  localStorage.removeItem('guests_' + tableId);
+  localStorage.removeItem('checkin_' + tableId);
+};
+window.getSalesData = async () => [];
+window.deleteSaleDoc = async () => alert("Firebase未設定のため利用できません");
+window.deleteDaySales = async () => alert("Firebase未設定のため利用できません");
+window.loginOwner = async () => alert("Firebase未設定のためログインできません");
+window.logoutOwner = () => {};
+</script>
 <div id="overlay-add-table" class="overlay" style="display:none;">
   <div class="modal">
     <div style="font-weight:bold; font-size:17px; margin-bottom:16px; color:var(--primary);">＋ 席を追加</div>
